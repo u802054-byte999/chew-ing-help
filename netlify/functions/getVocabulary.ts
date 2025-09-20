@@ -37,77 +37,71 @@ const vocabularySchema = {
 
 const generatePrompt = (inputs: string[]): string => {
   const queryPattern = inputs.map(input => input.trim() || '?').join(' ');
-
-  const prompt = `
-身為繁體中文詞彙專家，請根據以下模式找出最相關、最常見的詞彙。
-查詢模式：[${queryPattern}]
-說明：模式由國字或注音組成。'?' 代表任何字或發音。
-`;
-  return prompt;
+  return `身為一個嚴格的 JSON API，請根據以下查詢模式，找出數個最相關的繁體中文詞彙。查詢模式：[${queryPattern}]。'?' 代表任何字或發音。只回傳 JSON 陣列，不要有任何額外的文字或解釋。`;
 };
 
+const MAX_RETRIES = 3;
 
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      body: 'Method Not Allowed',
-    };
+    return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
   try {
     const { inputs } = JSON.parse(event.body || '{}');
-
     if (!Array.isArray(inputs) || inputs.length === 0) {
-      return {
-        statusCode: 400,
-        body: JSON.stringify({ error: 'Invalid input: inputs array is required.' }),
-      };
+      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid input: inputs array is required.' }) };
     }
 
     const prompt = generatePrompt(inputs);
 
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: prompt,
-        config: {
-            responseMimeType: 'application/json',
-            responseSchema: vocabularySchema,
-            temperature: 0.5,
-        },
-    });
-    
-    const jsonText = response.text?.trim() ?? '';
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: prompt,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: vocabularySchema,
+                temperature: 0.5,
+            },
+        });
+        
+        const jsonText = response.text?.trim() ?? '';
 
-    if (!jsonText) {
-      console.error("Gemini API returned an empty response.");
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'AI 模型沒有回傳任何結果，可能是因為找不到符合的詞彙或觸發了內容安全限制。' }),
-      };
+        // 嘗試解析 JSON 來驗證其有效性
+        if (jsonText) {
+          const parsedData = JSON.parse(jsonText);
+          // 確保回傳的是一個陣列
+          if (Array.isArray(parsedData)) {
+            return {
+              statusCode: 200,
+              headers: { 'Content-Type': 'application/json' },
+              body: jsonText,
+            };
+          }
+        }
+        // 如果 jsonText 是空的，或解析後不是陣列，就當作失敗，進入下一次重試
+        console.warn(`Attempt ${attempt} failed: Received invalid data. Retrying...`);
+
+      } catch (e) {
+        console.error(`Error during attempt ${attempt}:`, e);
+        if (attempt === MAX_RETRIES) {
+          // 如果是最後一次嘗試，則拋出錯誤
+          throw e;
+        }
+      }
     }
 
-    try {
-      // 驗證 Gemini 回傳的是否為有效的 JSON
-      JSON.parse(jsonText);
-    } catch (e) {
-      console.error("Gemini API returned invalid JSON:", jsonText);
-      return {
-        statusCode: 500,
-        body: JSON.stringify({ error: 'AI 模型回傳了格式不正確的資料。' }),
-      };
-    }
-    
+    // 如果所有重試都失敗了
+    console.error("All retries failed to get a valid response from Gemini API.");
     return {
-      statusCode: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonText,
+      statusCode: 500,
+      body: JSON.stringify({ error: 'AI 模型在多次嘗試後仍無法回傳有效結果，請調整您的輸入或稍後再試。' }),
     };
 
   } catch (error) {
-    console.error("Error in Netlify function:", error);
+    console.error("Error in Netlify function after all retries:", error);
     const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
     return {
       statusCode: 500,
