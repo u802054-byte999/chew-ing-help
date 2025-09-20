@@ -1,0 +1,5 @@
+{
+  "name": "Chinese Vocabulary Finder",
+  "description": "An application that finds Chinese vocabulary words based on a character and its Bopomofo (Zhuyin) pronunciation. It provides definitions, example sentences, and text-to-speech functionality.",
+  "requestFramePermissions": []
+}
