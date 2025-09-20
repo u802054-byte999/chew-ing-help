@@ -36,26 +36,15 @@ const vocabularySchema = {
 };
 
 const generatePrompt = (inputs: string[]): string => {
-    const patternDescription = inputs.map((input, index) => {
-        const trimmedInput = input.trim();
-        if (trimmedInput) {
-            return `第 ${index + 1} 個位置是「${trimmedInput}」(可能是國字或注音)`;
-        }
-        return `第 ${index + 1} 個位置不指定`;
-    }).join('；');
+  const queryPattern = inputs.map(input => input.trim() || '?').join(' ');
 
-    const fullPrompt = `你是一位專業的繁體中文語言導師。
-你的任務是根據使用者提供的模式，生成一個符合模式的常見繁體中文詞彙列表。
-
-查詢模式：${patternDescription}。
-
-請注意：
-- 詞彙長度最多為四個字。
-- 如果找不到完全符合的詞彙，請提供最相關的結果。
-- 你的回覆必須嚴格遵循提供的 JSON 格式。`;
-    
-    return fullPrompt;
-}
+  const prompt = `
+身為繁體中文詞彙專家，請根據以下模式找出最相關、最常見的詞彙。
+查詢模式：[${queryPattern}]
+說明：模式由國字或注音組成。'?' 代表任何字或發音。
+`;
+  return prompt;
+};
 
 
 export const handler: Handler = async (event) => {
