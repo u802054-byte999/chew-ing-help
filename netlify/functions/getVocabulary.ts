@@ -1,13 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { Handler } from "@netlify/functions";
 
-interface VocabularyEntry {
-  word: string;
-  pronunciation: string;
-  definition: string;
-  example: string;
-}
-
 const API_KEY = process.env.API_KEY;
 
 if (!API_KEY) {
@@ -48,10 +41,20 @@ const generatePrompt = (inputs: string[]): string => {
         if (trimmedInput) {
             return `第 ${index + 1} 個位置是「${trimmedInput}」(可能是國字或注音)`;
         }
-        return `第 ${index + 1} 個位置是任意字`;
-    }).join('，');
+        return `第 ${index + 1} 個位置不指定`;
+    }).join('；');
 
-    return `請生成符合以下模式的常見繁體中文詞彙列表：${patternDescription}。詞彙長度最多為四個字。如果找不到完全符合的詞彙，請提供最相關的結果。`;
+    const fullPrompt = `你是一位專業的繁體中文語言導師。
+你的任務是根據使用者提供的模式，生成一個符合模式的常見繁體中文詞彙列表。
+
+查詢模式：${patternDescription}。
+
+請注意：
+- 詞彙長度最多為四個字。
+- 如果找不到完全符合的詞彙，請提供最相關的結果。
+- 你的回覆必須嚴格遵循提供的 JSON 格式。`;
+    
+    return fullPrompt;
 }
 
 
@@ -73,14 +76,12 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    const systemInstruction = `你是一位專業的繁體中文（Traditional Chinese）語言導師，專精於詞彙學。你的任務是為語言學習者提供清晰、準確且有幫助的資訊。`;
     const prompt = generatePrompt(inputs);
 
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash',
         contents: prompt,
         config: {
-            systemInstruction: systemInstruction,
             responseMimeType: 'application/json',
             responseSchema: vocabularySchema,
             temperature: 0.5,
@@ -118,9 +119,10 @@ export const handler: Handler = async (event) => {
 
   } catch (error) {
     console.error("Error in Netlify function:", error);
+    const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Failed to fetch vocabulary data.' }),
+      body: JSON.stringify({ error: '後端函式執行失敗。', details: errorMessage }),
     };
   }
 };
