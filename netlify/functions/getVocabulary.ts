@@ -64,6 +64,7 @@ export const handler: Handler = async (event) => {
                 responseMimeType: 'application/json',
                 responseSchema: vocabularySchema,
                 temperature: 0.5,
+                thinkingConfig: { thinkingBudget: 0 },
             },
         });
         
