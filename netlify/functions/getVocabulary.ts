@@ -51,12 +51,7 @@ const generatePrompt = (inputs: string[]): string => {
         return `第 ${index + 1} 個位置是任意字`;
     }).join('，');
 
-    return `請生成一個常見的繁體中文詞彙列表，這些詞彙需符合以下模式：${patternDescription}。詞彙長度應為 1 到 4 個字。對於每個詞彙，請提供以下資訊：
-1.  完整的注音符號。
-2.  繁體中文的簡潔定義。
-3.  一個自然的繁體中文例句。
-
-請根據提供的 JSON schema 格式化你的輸出。如果找不到完全符合的詞彙，請提供最相關的結果。`;
+    return `請生成符合以下模式的常見繁體中文詞彙列表：${patternDescription}。詞彙長度最多為四個字。如果找不到完全符合的詞彙，請提供最相關的結果。`;
 }
 
 
@@ -78,7 +73,7 @@ export const handler: Handler = async (event) => {
       };
     }
 
-    const systemInstruction = `你是一位專業的繁體中文（Traditional Chinese）語言導師，專精於詞彙學。你的任務是為語言學習者提供清晰、準確且有幫助的資訊。請只回傳 JSON 格式的資料。`;
+    const systemInstruction = `你是一位專業的繁體中文（Traditional Chinese）語言導師，專精於詞彙學。你的任務是為語言學習者提供清晰、準確且有幫助的資訊。`;
     const prompt = generatePrompt(inputs);
 
     const response = await ai.models.generateContent({
@@ -92,8 +87,26 @@ export const handler: Handler = async (event) => {
         },
     });
     
-    const jsonText = response.text.trim();
-    // The Gemini response is already a JSON string because of the schema, no need to re-parse and stringify
+    const jsonText = response.text?.trim() ?? '';
+
+    if (!jsonText) {
+      console.error("Gemini API returned an empty response.");
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'AI 模型沒有回傳任何結果，可能是因為找不到符合的詞彙或觸發了內容安全限制。' }),
+      };
+    }
+
+    try {
+      // 驗證 Gemini 回傳的是否為有效的 JSON
+      JSON.parse(jsonText);
+    } catch (e) {
+      console.error("Gemini API returned invalid JSON:", jsonText);
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'AI 模型回傳了格式不正確的資料。' }),
+      };
+    }
     
     return {
       statusCode: 200,
